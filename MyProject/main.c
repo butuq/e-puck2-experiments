@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <time.h>
-
 
 #include "ch.h"
 #include "hal.h"
@@ -28,29 +26,32 @@ float lmt = 0.05;
 
 
 //Modes of operation
-void mode_1();
-void mode_2();
+void mode_1(void);
+void mode_2(void);
 
 //Functions mode 1
-void search();    //Move around to explore
-void rotate();    //Rotate
+void search(void);    //Move around to explore
+void rotate(void);    //Rotate
 
 //Functions mode 2
-void lock_front();
-void right_side();
-void left_side();
-void search2();
+void lock_front(void);
+void right_side(void);
+void left_side(void);
+void search2(void);
 
 //Globals mode1 
 int sgn=1, random_dir=1, searchl=300, searchr=500,extra=0,rot_spd=300;
 float k = 75;
 //Globals mode2
-int rot_spd2=200,ref_midpoint = lmt/2,kp=40,ki=10,searchl2=200,searchr2=100;
+int rot_spd2=200,ref_midpoint = 0,kp=40,ki=10,searchl2=200,searchr2=100;
+
 float acc_errorlef,acc_errorrig,errorlef,errorrig;
+float error1=0,error2=0,acc_errorlef=0,acc_errorrig=0;
 
 
 int main(void)
 {
+  ref_midpoint =lmt/2;
   //Initialize default
   messagebus_init(&bus, &bus_lock, &bus_condvar);
   halInit();
@@ -66,7 +67,7 @@ int main(void)
 
 
   serial_start();
-  srand(time(0));
+
   //int counter = 0;
 
   //int sensor_data[8];
@@ -90,7 +91,7 @@ int main(void)
       chThdSleepMilliseconds(1000);
       
       //Mode selector
-      switch(get_selector())
+      switch(selc)
       {
         case(1): //Explore mode
       {
@@ -126,8 +127,6 @@ int main(void)
       left_v = left_v*-1;
       right_v = right_v*-1;
       counter = 0;*/
-
-
     }
     return 0;
 }
@@ -144,11 +143,11 @@ void __stack_chk_fail(void)
 //Mode 1: Explore
 void mode_1()
 {
-  if (sensor_data[1]<lmt || sensor_data[2]<lmt || sensor_data[3]<lmt || sensor_data[4]<lmt)
+  if (sensor_data[0]<lmt || sensor_data[1]<lmt || sensor_data[2]<lmt || sensor_data[3]<lmt)
   {
   	rotate();
   	extra = 0;
-  	break;
+  	return;
   }
   	search();
 }
@@ -158,26 +157,25 @@ void mode_1()
 
 void mode_2()
 {
-  static float error1=0,error2=0,acc_errorlef=0,acc_errorrig=0;
   
   search2();
   //Found something by right side
-  if (sensor_data[5]<lmt || sensor_data[6]<lmt)
+  if (sensor_data[4]<lmt || sensor_data[5]<lmt)
   {
     right_side();
   }      
 	//Found something by left side
-	if (sensor_data[2]<lmt || sensor_data[1]<lmt)
+	if (sensor_data[1]<lmt || sensor_data[0]<lmt)
 	{
 	  left_side();
 	}
 	//Found something in the back
-	if (sensor_data[7]<lmt || sensor_data[8]<lmt)
+	if (sensor_data[6]<lmt || sensor_data[7]<lmt)
 	{
 	  right_side();
 	}
 	//Found something in the front
-	if (sensor_data[3]<lmt || sensor_data[4]<lmt)
+	if (sensor_data[2]<lmt || sensor_data[3]<lmt)
 	{
 	  lock_front();
 	}
@@ -204,8 +202,8 @@ void lock_front()
 
 	//PID controller
 	//Error
-	errorlef = sensor_data[3] - ref_midpoint;
-	errorrig = sensor_data[4] - ref_midpoint;
+	errorlef = sensor_data[2] - ref_midpoint;
+	errorrig = sensor_data[3] - ref_midpoint;
 	acc_errorlef = acc_errorlef + errorlef;
 	acc_errorrig = acc_errorrig + errorrig;
 
