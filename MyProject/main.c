@@ -23,8 +23,9 @@ CONDVAR_DECL(bus_condvar);
 int sensor_data[8], front_sensor;
 int last[8];
 float left_v=0, right_v=0,lastv,lastr;
-float lmt = 150,lmt2 = 200,lmt3=25,sdlmt=200,sdlmt2=250;
+float lmt = 100,lmt2 = 70,lmt3=25,sdlmt=200,sdlmt2=250;
 float frntlmt = 200;
+float pi=3.1416,error_x=0,diferror;
 
 //Modes of operation
 void mode_1(void);
@@ -33,6 +34,8 @@ void mode_2(void);
 //Functions mode 1
 void search(void);    //Move around to explore
 void rotate(void);    //Rotate
+void rot_dir(void);
+void controller(void);
 
 //Functions mode 2
 void lock_front(void);
@@ -41,12 +44,12 @@ void left_side(void);
 void search2(void);
 
 //Globals mode1 
-int sgn=1, random_dir=1, searchl=500, searchr=600,extra=0,rot_spd=300,cont=0;
+int sgn=1, dir=1, random_dir=1, searchl=500, searchr=600,extra=0,rot_spd=300,cont=0,vellow =321 ,velhigh =481; //vlow =321
 float k = 75;
 int mem =0;
 //Globals mode2
-int rot_spd2=350,ref_midpoint = 0,searchl2=350,searchr2=200;
-float kp=0.28,ki=0;
+int rot_spd2=350,ref_midpoint = 0,searchl2=500,searchr2=350;
+float kp=1,ki=0;//0.28 prv
 float acc_errorlef,acc_errorrig,errorlef,errorrig;
 float error1=0,error2=0,acc_errorlef=0,acc_errorrig=0;
 
@@ -59,7 +62,7 @@ float error1=0,error2=0,acc_errorlef=0,acc_errorrig=0;
 
 int main(void)
 {
-  ref_midpoint =175; //could be 175
+  ref_midpoint =300; //could be 175
   //Initialize default
   messagebus_init(&bus, &bus_lock, &bus_condvar);
   halInit();
@@ -103,7 +106,7 @@ int main(void)
         last[i] = sensor_data[i];
       }*/
 
-      
+
       //Mode selector
       switch(selc)
       {
@@ -122,7 +125,7 @@ int main(void)
         right_v = 0;
 
         char str[100];
-        int str_length=sprintf(str, "Printing number %d\n",sensor_data[1]);
+        int str_length=sprintf(str, "Printing data se %d\n",sensor_data[0]);
         set_led(LED1,2);
         e_send_uart1_char(str, str_length); //Send data using bluetooth
         chThdSleepMilliseconds(1000);
@@ -130,7 +133,7 @@ int main(void)
       }
 
       char str[100];
-	  int str_length=sprintf(str, "Printing number %d\n",sensor_data[1]);
+	  int str_length=sprintf(str, "Printing error %f\n",diferror);
 	  //set_led(LED1,2);
 	  e_send_uart1_char(str, str_length); //Send data using bluetooth
 
@@ -175,16 +178,12 @@ void __stack_chk_fail(void)
 void mode_1()
 {
 	//Wall detected, move away
-  if ((((sensor_data[0]>lmt || sensor_data[5]>sdlmt) || sensor_data[6]>sdlmt || sensor_data[7]>lmt) && (mem == 1)) || ((sensor_data[0]>lmt2 || sensor_data[5]>sdlmt2 || sensor_data[6]>sdlmt2 || sensor_data[7]>lmt2) && (mem == 0)) )
-  {
-  	rotate();
-  	mem = 1;
-  	return;
-  }
-
-  //Search for wall and explore.
-  	search();
-  	mem=0;
+    if (sensor_data[0]>lmt || sensor_data[7]>lmt){
+        rot_dir();
+        rotate();
+    }else{
+        controller();
+    }
 }
 
 
@@ -194,26 +193,27 @@ void mode_2()
 {
   
   search2();
+	//Found something in the front
+	if (sensor_data[0]>lmt2 || sensor_data[7]>lmt2)
+	{
+	  lock_front();
+	}
   //Found something by right side
-  if (sensor_data[1]>lmt3 || sensor_data[2]>lmt3)
+  if (sensor_data[1]>lmt2 || sensor_data[2]>lmt2)
   {
     right_side();
   }      
 	//Found something by left side
-	if (sensor_data[5]>lmt3 || sensor_data[6]>lmt3)
+	if (sensor_data[5]>lmt2 || sensor_data[6]>lmt2)
 	{
 	  left_side();
 	}
 	//Found something in the back
-	if (sensor_data[4]>lmt3 || sensor_data[3]>lmt3)
+	if (sensor_data[4]>lmt2 || sensor_data[3]>lmt2)
 	{
 	  right_side();
 	}
-	//Found something in the front
-	if (sensor_data[0]>frntlmt || sensor_data[7]>frntlmt)
-	{
-	  lock_front();
-	}
+
 }
 
 ////////////////////////////////////////////
@@ -226,9 +226,38 @@ void search()    //Move around to explore
 }
 void rotate()    //Rotate
 {
-  left_v = rot_spd;
-  right_v = -rot_spd;
+    left_v = -rot_spd*dir;
+    right_v = rot_spd*dir;
+    mem = 0;
 }
+
+void controller()
+{
+	error_x = sensor_data[2] - sensor_data[5] + cos(45*pi/180)*(sensor_data[1]-sensor_data[6]) + cos(60*pi/180)*(sensor_data[3]-sensor_data[4]);
+
+	left_v = vellow;
+	right_v = vellow;
+	mem = 1;
+	if(error_x > 0){
+		left_v = vellow;
+		right_v = velhigh;
+    }
+
+    if(error_x < 0){
+        left_v = velhigh;
+        right_v = vellow;
+    }
+}
+
+void rot_dir(){
+    if (sensor_data[1]>lmt && mem == 1){
+        dir = 1;
+    }
+    if(sensor_data[6]>lmt && mem == 1){
+        dir = -1;
+    }
+}
+
 
 ///////////////////////////////////////////
 //Functions mode 2
@@ -242,19 +271,25 @@ void lock_front()
 	acc_errorlef = acc_errorlef + errorlef;
 	acc_errorrig = acc_errorrig + errorrig;
 
-
+	diferror = errorrig-errorlef;
 
 	left_v = kp*errorlef + ki*acc_errorlef;
 	right_v = kp*errorrig + ki*acc_errorrig;
 
-	if(left_v < 150 && left_v > -150)
+	if (diferror > 200 && diferror<-200){
+		//left_v = -200;
+		//right_v = 200;
+
+	}
+
+	/*if(left_v < 50 && left_v > -50)
 	{
 		left_v=0;
 	}
-	if(right_v < 150 && right_v > -150)
+	if(right_v < 50 && right_v > -50)
 	{
 		right_v=0;
-	}
+	}*/
 
 }
 void right_side()
@@ -279,5 +314,4 @@ void search2()
   acc_errorlef = 0;
   acc_errorrig = 0;
 }
-
 
